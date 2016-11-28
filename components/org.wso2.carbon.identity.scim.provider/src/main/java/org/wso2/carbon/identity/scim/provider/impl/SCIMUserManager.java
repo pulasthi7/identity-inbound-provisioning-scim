@@ -274,6 +274,32 @@ public class SCIMUserManager implements UserManager {
     }
 
     @Override
+    public List<User> listUsersByAttributes(List<String> attributeURIs) throws CharonException{
+
+        List<User> users = new ArrayList<>();
+        try {
+            String[] userNames = carbonUM.getUserList(SCIMConstants.ID_URI, "*", null);
+            if (userNames != null && userNames.length != 0) {
+                for (String userName : userNames) {
+                    if (userName.contains(UserCoreConstants.NAME_COMBINER)) {
+                        userName = userName.split("\\" + UserCoreConstants.NAME_COMBINER)[0];
+                    }
+                    User scimUser = this.getSCIMUserWithoutRoles(userName, attributeURIs);
+                    if (scimUser != null) {
+                        Map<String, Attribute> attrMap = scimUser.getAttributeList();
+                        if (attrMap != null && !attrMap.isEmpty()) {
+                            users.add(scimUser);
+                        }
+                    }
+                }
+            }
+        } catch (UserStoreException e) {
+            throw new CharonException("Error while retrieving users from user store.", e);
+        }
+        return users;
+    }
+
+    @Override
     public List<User> listUsersByFilter(String attributeName, String filterOperation,
                                         String attributeValue) throws CharonException {
         //since we only support eq filter operation at the moment, no need to check for that.
@@ -468,7 +494,7 @@ public class SCIMUserManager implements UserManager {
                                   .equals(UserCoreConstants.PRIMARY_DEFAULT_DOMAIN_NAME))) {
                     newUser.setUserName(
                             UserCoreUtil.addDomainToName(newUser.getUserName(),
-                                                         IdentityUtil.extractDomainFromName(oldUser.getUserName())));
+                                    IdentityUtil.extractDomainFromName(oldUser.getUserName())));
                 }
 
                 //check if username of the updating user existing in the userStore.
@@ -1284,6 +1310,36 @@ public class SCIMUserManager implements UserManager {
         } catch (UserStoreException | CharonException | NotFoundException e) {
             log.error("Error in getting user information from Carbon User Store for " +
                     "user: " + userName + " ", e);
+        }
+        return scimUser;
+    }
+
+    private User getSCIMUserWithoutRoles(String userName, List<String> claimURIList) throws CharonException {
+
+        User scimUser = null;
+
+        String userStoreDomainName = IdentityUtil.extractDomainFromName(userName);
+        if (StringUtils.isNotBlank(userStoreDomainName) && !isSCIMEnabled(userStoreDomainName)) {
+            throw new CharonException("Cannot add user through scim to user store " + ". SCIM is not " +
+                    "enabled for user store " + userStoreDomainName);
+        }
+
+        try {
+            //obtain user claim values
+            Map<String, String> attributes = carbonUM.getUserClaimValues(
+                    userName, claimURIList.toArray(new String[claimURIList.size()]), null);
+            //skip simple type addresses claim coz it is complex with sub types in the schema
+            if (attributes.containsKey(SCIMConstants.ADDRESSES_URI)) {
+                attributes.remove(SCIMConstants.ADDRESSES_URI);
+            }
+
+            // Add username with domain name
+            attributes.put(SCIMConstants.USER_NAME_URI, userName);
+            scimUser = (User) AttributeMapper.constructSCIMObjectFromAttributes(
+                    attributes, SCIMConstants.USER_INT);
+
+        } catch (UserStoreException | NotFoundException e) {
+            throw new CharonException("Error in getting user information for user: " + userName, e);
         }
         return scimUser;
     }

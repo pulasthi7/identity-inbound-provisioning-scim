@@ -198,10 +198,11 @@ public class UserResource extends AbstractResource {
             // create charon-SCIM user endpoint and hand-over the request.
             UserResourceEndpoint userResourceEndpoint = new UserResourceEndpoint();
             SCIMResponse scimResponse = null;
-            if (filter != null) {
+            if (searchAttribute != null) {
+                scimResponse = userResourceEndpoint.listByAttribute(searchAttribute, userManager, format);
+            } else if (filter != null) {
                 scimResponse = userResourceEndpoint.listByFilter(filter, userManager, format);
-            } else if (searchAttribute == null && filter == null && startIndex == null
-                    && count == null && sortBy == null) {
+            } else if (startIndex == null && count == null && sortBy == null) {
                 scimResponse = userResourceEndpoint.list(userManager, format);
             } else {
                 // All other query parameters are not supported hence send a error message.
